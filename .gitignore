@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+
+# environment variables
+.venv/
+
+# IDE
+.vscode/
+
+# OS
+.DS_Store
+
+# SII
+.sii/
+
+# PDF
+pdf/
+
