@@ -12,11 +12,10 @@ with open("queries.txt", "r", encoding="utf-8") as file:
 ROOT_DOWNLOAD_DIR = "./pdf"
 
 # 每个查询最多下载多少篇论文
-MAX_RESULTS_PER_QUERY = 50  # 可自由调整：10（日常）、50（周报）、100（调研）
+MAX_RESULTS_PER_QUERY = 20  # 精简：只下载20篇
 
-# 是否只抓取最近 N 天的论文？
-DAYS_AGO = 7           # ← 设置为 7 表示“最近一周”
-ONLY_TODAY = True      # ← 设为 True 表示启用时间过滤
+# 抓取最近1天的论文
+DAYS_AGO = 1
 # ===============================================
 
 # 计算时间窗口：只抓从这个日期之后提交的论文
@@ -32,12 +31,9 @@ os.makedirs(SESSION_DIR, exist_ok=True)
 
 # 写日志头
 with open(LOG_FILE, "w", encoding="utf-8") as f:
-    f.write(f"📅 文献抓取日志\n")
-    f.write(f"⏰ 执行时间: {TIMESTAMP}\n")
-    f.write(f"📅 抓取范围: 最近 {DAYS_AGO} 天（从 {CUTOFF_DATE} 开始）\n")
-    f.write(f"🔍 查询类别数: {len(QUERIES)}\n")
+    f.write(f"📅 文献抓取日志 - {TIMESTAMP}\n")
     f.write(f"📥 每类最多下载: {MAX_RESULTS_PER_QUERY} 篇\n")
-    f.write(f"{'='*80}\n\n")
+    f.write(f"{'='*50}\n")
 
 def is_within_time_window(paper):
     """
@@ -71,29 +67,28 @@ def fetch_papers(query):
     category_dir = os.path.join(SESSION_DIR, folder_name)
 
     print(f"\n🔍 搜索: {query}")
-    print(f"📁 分类文件夹: {folder_name}")
 
     # 构建搜索对象
     search = arxiv.Search(
         query=query,
-        max_results=MAX_RESULTS_PER_QUERY,           # 控制总请求数
-        sort_by=arxiv.SortCriterion.SubmittedDate,   # 按提交时间排序
-        sort_order=arxiv.SortOrder.Descending,       # 最新的在前
+        max_results=MAX_RESULTS_PER_QUERY,
+        sort_by=arxiv.SortCriterion.SubmittedDate,
+        sort_order=arxiv.SortOrder.Descending,
     )
 
     # 创建客户端
     client = arxiv.Client(
-        page_size=min(MAX_RESULTS_PER_QUERY, 100),   # 每页请求数
-        delay_seconds=3,                             # 请求间隔，尊重服务器
-        num_retries=3                                # 网络失败时重试次数
+        page_size=min(MAX_RESULTS_PER_QUERY, 100),
+        delay_seconds=2,  # 精简：减少延迟
+        num_retries=2     # 精简：减少重试次数
     )
 
     downloaded = 0
     try:
         for result in client.results(search):
-            # 时间过滤：只保留最近 N 天的论文
-            if ONLY_TODAY and not is_within_time_window(result):
-                continue  # 跳过太早的论文
+            # 时间过滤：只保留最近1天的论文
+            if not is_within_time_window(result):
+                continue
 
             # 防止超限
             if downloaded >= MAX_RESULTS_PER_QUERY:
@@ -106,21 +101,14 @@ def fetch_papers(query):
             # 下载设置
             short_id = result.get_short_id()
             filename = f"{short_id}.pdf"
-            filepath = os.path.join(category_dir, filename)
 
             try:
                 result.download_pdf(dirpath=category_dir, filename=filename)
-                print(f"✅ {short_id}: {result.title[:70]}...")
+                print(f"✅ {short_id}: {result.title[:50]}...")
 
-                # 写入日志
+                # 精简日志
                 with open(LOG_FILE, "a", encoding="utf-8") as f:
-                    f.write(f"📄 论文ID: {short_id}\n")
-                    f.write(f"   标题: {result.title}\n")
-                    f.write(f"   作者: {', '.join(str(author) for author in result.authors)}\n")
-                    f.write(f"   提交时间: {result.published.strftime('%Y-%m-%d %H:%M')} (UTC)\n")
-                    f.write(f"   链接: {result.entry_id}\n")
-                    f.write(f"   保存路径: {filepath}\n")
-                    f.write(f"{'-'*80}\n")
+                    f.write(f"{short_id} | {result.title[:60]} | {result.published.strftime('%m-%d %H:%M')}\n")
 
                 downloaded += 1
             except Exception as e:
@@ -135,20 +123,10 @@ def fetch_papers(query):
 # ========== 主程序 ==========
 if __name__ == "__main__":
     print(f"📅 开始抓取【最近 {DAYS_AGO} 天】的新论文...")
-    print(f"📁 本次结果将保存在: ./{SESSION_DIR}/")
 
     total_downloaded = 0
     for query in QUERIES:
         count = fetch_papers(query)
         total_downloaded += count
 
-    # 更新日志头部统计
-    with open(LOG_FILE, "r+", encoding="utf-8") as f:
-        content = f.read()
-        f.seek(0, 0)
-        f.write(f"📊 总计下载: {total_downloaded} 篇论文\n")
-        f.write(f"{'='*80}\n\n")
-        f.write(content)
-
     print(f"\n🎉 抓取完成！共下载 {total_downloaded} 篇新论文。")
-    print(f"📝 详细日志已保存: {LOG_FILE}")
